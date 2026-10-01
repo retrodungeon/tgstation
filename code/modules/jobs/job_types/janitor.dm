@@ -68,6 +68,7 @@
  */
 
 #define BB_CREW_NPC_DESTINATION "crew_npc_destination"
+#define BB_CREW_NPC_PICKUP_TARGET "crew_npc_pickup_target"
 
 /datum/bt_node/ai_behavior/move_to_crew_npc_destination
 	parent_type = /datum/bt_node/ai_behavior/move_to_target
@@ -81,6 +82,11 @@
 	maximum_length = 300
 	max_pathing_attempts = 20
 
+/datum/bt_node/ai_behavior/crew_npc_pick_up_target
+	parent_type = /datum/bt_node/ai_behavior/pick_up
+	target_key = BB_CREW_NPC_PICKUP_TARGET
+	drop_held = FALSE
+
 /datum/ai_controller/crew_npc
 	ai_movement = /datum/ai_movement/jps/crew_npc
 	movement_delay = 0.2 SECONDS
@@ -91,6 +97,48 @@
 	if(!ishuman(new_pawn))
 		return AI_CONTROLLER_INCOMPATIBLE
 	return ..()
+
+/datum/ai_controller/crew_npc/proc/pick_up_target(obj/item/target)
+	if(QDELETED(target) || !isturf(target.loc))
+		return FALSE
+
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return FALSE
+
+	set_blackboard_key(BB_CREW_NPC_PICKUP_TARGET, target)
+
+	// Use the same station-scale pathfinder as normal Crew NPC navigation.
+	// This is deliberately a real walk followed by a real AI click interaction.
+	var/datum/ai_movement/movement = ai_movement
+	movement.start_moving_towards(src, target, 1)
+
+	// The generic pickup behavior itself is reusable, but for this admin-driven
+	// primitive we wait until arrival and then invoke it once.
+	INVOKE_ASYNC(src, PROC_REF(finish_pickup_test), target)
+	return TRUE
+
+/datum/ai_controller/crew_npc/proc/finish_pickup_test(obj/item/target)
+	while(!QDELETED(target) && !QDELETED(pawn) && get_dist(pawn, target) > 1)
+		stoplag(2)
+
+	if(QDELETED(target) || QDELETED(pawn))
+		return
+
+	ai_movement.stop_moving_towards(src)
+	var/datum/bt_node/ai_behavior/crew_npc_pick_up_target/pickup_behavior = new
+	pickup_behavior.setup(src)
+	pickup_behavior.perform(0, src)
+	qdel(pickup_behavior)
+
+/datum/ai_controller/crew_npc/proc/drop_active_item()
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return FALSE
+	var/obj/item/held_item = living_pawn.get_active_held_item()
+	if(!held_item)
+		return FALSE
+	return living_pawn.dropItemToGround(held_item)
 
 /datum/ai_controller/crew_npc/proc/set_destination(atom/new_destination)
 	if(QDELETED(new_destination))
@@ -120,6 +168,7 @@
 		controller.set_destination(debug_destination)
 
 #undef BB_CREW_NPC_DESTINATION
+#undef BB_CREW_NPC_PICKUP_TARGET
 
 
 /*
@@ -169,3 +218,48 @@ ADMIN_VERB(call_barry_johnson, R_ADMIN, "Call Barry Johnson", "Send an existing 
 	log_admin("[key_name(user)] called Autonomous Crew prototype [barry] to [AREACOORD(destination)].")
 	message_admins("[key_name_admin(user)] called Autonomous Crew prototype [barry] to [ADMIN_VERBOSEJMP(destination)].")
 	to_chat(user, span_notice("Sending [barry] to your current location."))
+
+
+/*
+ * Milestone 2: "Barry Has Hands" test helpers.
+ * These select a real world item, make the Crew NPC physically walk to it,
+ * and use the normal AI interaction path to pick it up.
+ */
+ADMIN_VERB(barry_pick_up_item, R_ADMIN, "Barry Pick Up Item", "Order the Autonomous Crew janitor prototype to pick up a world item.", ADMIN_CATEGORY_DEBUG)
+	VERB_ARG_TYPED(target, VERB_ARG_TYPE_OBJ, VERB_ARG_SOURCE_WORLD, /obj/item)
+
+	var/mob/living/carbon/human/crew_npc/janitor/barry
+	for(var/mob/living/carbon/human/crew_npc/janitor/candidate in GLOB.mob_list)
+		barry = candidate
+		break
+
+	if(!barry)
+		to_chat(user, span_warning("No Autonomous Crew janitor prototype currently exists."))
+		return
+	if(!target || !isturf(target.loc))
+		to_chat(user, span_warning("Select an item that is currently lying on a turf."))
+		return
+
+	var/datum/ai_controller/crew_npc/controller = barry.ai_controller
+	if(!controller || !controller.pick_up_target(target))
+		to_chat(user, span_warning("Unable to order [barry] to pick up [target]."))
+		return
+
+	to_chat(user, span_notice("Ordering [barry] to retrieve [target]."))
+
+ADMIN_VERB(barry_drop_item, R_ADMIN, "Barry Drop Held Item", "Order the Autonomous Crew janitor prototype to drop the item in their active hand.", ADMIN_CATEGORY_DEBUG)
+	var/mob/living/carbon/human/crew_npc/janitor/barry
+	for(var/mob/living/carbon/human/crew_npc/janitor/candidate in GLOB.mob_list)
+		barry = candidate
+		break
+
+	if(!barry)
+		to_chat(user, span_warning("No Autonomous Crew janitor prototype currently exists."))
+		return
+
+	var/datum/ai_controller/crew_npc/controller = barry.ai_controller
+	if(!controller || !controller.drop_active_item())
+		to_chat(user, span_warning("[barry] has no droppable item in their active hand."))
+		return
+
+	to_chat(user, span_notice("[barry] drops their active held item."))
