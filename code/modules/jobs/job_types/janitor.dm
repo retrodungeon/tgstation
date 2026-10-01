@@ -129,3 +129,37 @@ ADMIN_VERB(spawn_barry_johnson, R_ADMIN, "Spawn Barry Johnson", "Spawn the Auton
 	var/mob/living/carbon/human/crew_npc/janitor/barry = new(spawn_turf)
 	log_admin("[key_name(user)] spawned Autonomous Crew prototype [barry] at [AREACOORD(spawn_turf)].")
 	message_admins("[key_name_admin(user)] spawned Autonomous Crew prototype [barry] at [ADMIN_VERBOSEJMP(spawn_turf)].")
+
+
+/*
+ * Milestone-1 navigation test helper.
+ * Sends an existing Autonomous Crew janitor to the admin's current turf,
+ * allowing long-distance, door, corner, and access-path testing.
+ */
+ADMIN_VERB(call_barry_johnson, R_ADMIN, "Call Barry Johnson", "Send an existing Autonomous Crew janitor prototype to your current location.", ADMIN_CATEGORY_DEBUG)
+	var/mob/living/carbon/human/crew_npc/janitor/barry
+	for(var/mob/living/carbon/human/crew_npc/janitor/candidate in GLOB.mob_list)
+		barry = candidate
+		break
+
+	if(!barry)
+		to_chat(user, span_warning("No Autonomous Crew janitor prototype currently exists."))
+		return
+
+	var/turf/destination = get_turf(user.mob)
+	if(!destination)
+		to_chat(user, span_warning("Unable to find a valid destination turf."))
+		return
+
+	var/datum/ai_controller/crew_npc/controller = barry.ai_controller
+	if(!controller)
+		to_chat(user, span_warning("[barry] does not have an Autonomous Crew AI controller."))
+		return
+
+	if(!controller.set_destination(destination))
+		to_chat(user, span_warning("Unable to set [barry]'s destination."))
+		return
+
+	log_admin("[key_name(user)] called Autonomous Crew prototype [barry] to [AREACOORD(destination)].")
+	message_admins("[key_name_admin(user)] called Autonomous Crew prototype [barry] to [ADMIN_VERBOSEJMP(destination)].")
+	to_chat(user, span_notice("Sending [barry] to your current location."))
