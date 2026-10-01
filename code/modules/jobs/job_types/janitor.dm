@@ -75,8 +75,14 @@
 	required_dist = 0
 	finish_on_arrival = TRUE
 
+/datum/ai_movement/jps/crew_npc
+	// Crew NPCs are station-scale actors. Keep this local rather than increasing
+	// AI_MAX_PATH_LENGTH for every generic AI controller on the server.
+	maximum_length = 300
+	max_pathing_attempts = 20
+
 /datum/ai_controller/crew_npc
-	ai_movement = /datum/ai_movement/jps
+	ai_movement = /datum/ai_movement/jps/crew_npc
 	movement_delay = 0.2 SECONDS
 	ai_traits = DEFAULT_AI_FLAGS | RUN_WHILE_UNWATCHED
 	behavior_nodes = list(/datum/bt_node/ai_behavior/move_to_crew_npc_destination)
