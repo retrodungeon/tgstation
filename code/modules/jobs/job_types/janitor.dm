@@ -114,3 +114,18 @@
 		controller.set_destination(debug_destination)
 
 #undef BB_CREW_NPC_DESTINATION
+
+
+/*
+ * Temporary admin verb for Autonomous Crew prototype testing.
+ * Spawns Barry on the admin's current turf without relying on Spawn Panel indexing.
+ */
+ADMIN_VERB(spawn_barry_johnson, R_ADMIN, "Spawn Barry Johnson", "Spawn the Autonomous Crew janitor prototype at your current location.", ADMIN_CATEGORY_DEBUG)
+	var/turf/spawn_turf = get_turf(user.mob)
+	if(!spawn_turf)
+		to_chat(user, span_warning("Unable to find a valid turf to spawn Barry on."))
+		return
+
+	var/mob/living/carbon/human/crew_npc/janitor/barry = new(spawn_turf)
+	log_admin("[key_name(user)] spawned Autonomous Crew prototype [barry] at [AREACOORD(spawn_turf)].")
+	message_admins("[key_name_admin(user)] spawned Autonomous Crew prototype [barry] at [ADMIN_VERBOSEJMP(spawn_turf)].")
