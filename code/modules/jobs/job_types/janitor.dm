@@ -107,29 +107,31 @@
 		return FALSE
 
 	set_blackboard_key(BB_CREW_NPC_PICKUP_TARGET, target)
-
-	// Use the same station-scale pathfinder as normal Crew NPC navigation.
-	// This is deliberately a real walk followed by a real AI click interaction.
-	var/datum/ai_movement/movement = ai_movement
-	movement.start_moving_towards(src, target, 1)
-
-	// The generic pickup behavior itself is reusable, but for this admin-driven
-	// primitive we wait until arrival and then invoke it once.
-	INVOKE_ASYNC(src, PROC_REF(finish_pickup_test), target)
+	INVOKE_ASYNC(src, PROC_REF(run_pickup_test), target)
 	return TRUE
 
-/datum/ai_controller/crew_npc/proc/finish_pickup_test(obj/item/target)
-	while(!QDELETED(target) && !QDELETED(pawn) && get_dist(pawn, target) > 1)
-		stoplag(2)
-
+/datum/ai_controller/crew_npc/proc/run_pickup_test(obj/item/target)
 	if(QDELETED(target) || QDELETED(pawn))
 		return
 
+	// First walk adjacent using the normal station-scale movement datum.
+	ai_movement.start_moving_towards(src, target, 1)
+
+	var/timeout = world.time + 30 SECONDS
+	while(!QDELETED(target) && !QDELETED(pawn) && get_dist(pawn, target) > 1 && world.time < timeout)
+		stoplag(2)
+
 	ai_movement.stop_moving_towards(src)
-	var/datum/bt_node/ai_behavior/crew_npc_pick_up_target/pickup_behavior = new
-	pickup_behavior.setup(src)
-	pickup_behavior.perform(0, src)
-	qdel(pickup_behavior)
+
+	if(QDELETED(target) || QDELETED(pawn) || get_dist(pawn, target) > 1)
+		return
+
+	var/mob/living/living_pawn = pawn
+	if(living_pawn.get_active_held_item())
+		return
+
+	// ai_interact ultimately uses the human pawn's normal ClickOn path.
+	ai_interact(target, FALSE)
 
 /datum/ai_controller/crew_npc/proc/drop_active_item()
 	var/mob/living/living_pawn = pawn
