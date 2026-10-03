@@ -290,10 +290,16 @@
 
 		var/turf/mess_turf = get_turf(mess)
 		ai_movement.stop_moving_towards(src)
-		ai_movement.start_moving_towards(src, mess_turf, 1)
+		var/datum/move_loop/mess_loop = ai_movement.start_moving_towards(src, mess_turf, 1)
+		janitor_debug("mess movement started=[!!mess_loop]; target=[AREACOORD(mess_turf)]")
+		if(!mess_loop && get_dist(living_pawn, mess_turf) > 1)
+			janitor_debug("ABORT: failed to create movement loop to mess")
+			living_pawn.balloon_alert(living_pawn, "can't start path to mess!")
+			break
 		var/mess_timeout = world.time + 30 SECONDS
 		while(!QDELETED(mess) && get_dist(living_pawn, mess_turf) > 1 && world.time < mess_timeout)
 			stoplag(2)
+		janitor_debug("mess movement ended; dist=[QDELETED(mess) ? -1 : get_dist(living_pawn, mess_turf)]; timed_out=[world.time >= mess_timeout]")
 		ai_movement.stop_moving_towards(src)
 		if(QDELETED(mess))
 			continue
