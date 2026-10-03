@@ -214,7 +214,7 @@
 /datum/ai_controller/crew_npc/proc/janitor_debug(message)
 	var/mob/living/living_pawn = pawn
 	var/where = living_pawn ? AREACOORD(living_pawn) : "no pawn"
-	log_game("[CREW NPC] [living_pawn || "UNKNOWN"]: [message] @ [where]")
+	log_game("CREW NPC - [living_pawn ? living_pawn : "UNKNOWN"]: [message] @ [where]")
 
 /datum/ai_controller/crew_npc/proc/run_janitor_work(search_range)
 	var/mob/living/living_pawn = pawn
