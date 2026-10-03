@@ -223,22 +223,30 @@
 	if(!mop)
 		mop = find_nearest_loose_item(/obj/item/mop, search_range)
 		if(!mop)
+			living_pawn.balloon_alert(living_pawn, "can't find a mop!")
 			return
 		pick_up_target(mop)
 		var/pickup_timeout = world.time + 30 SECONDS
 		while(!QDELETED(mop) && mop.loc != living_pawn && world.time < pickup_timeout)
 			stoplag(2)
 		if(QDELETED(mop) || mop.loc != living_pawn)
+			living_pawn.balloon_alert(living_pawn, "couldn't get the mop!")
 			return
 
+	// Pickup normally leaves the mop in the active hand. If it somehow did not,
+	// select whichever hand actually contains it rather than blindly toggling.
 	if(mop != living_pawn.get_active_held_item())
-		living_pawn.swap_hand(living_pawn.get_inactive_hand_index())
+		var/mop_hand = living_pawn.get_held_index_of_item(mop)
+		if(mop_hand)
+			living_pawn.swap_hand(mop_hand)
 	if(mop != living_pawn.get_active_held_item())
+		living_pawn.balloon_alert(living_pawn, "can't ready the mop!")
 		return
 
 	if(mop.reagents.total_volume < 0.1)
 		var/obj/structure/mop_bucket/bucket = find_nearest_mop_bucket(search_range)
 		if(!bucket)
+			living_pawn.balloon_alert(living_pawn, "mop is dry; no water nearby!")
 			return
 		ai_movement.stop_moving_towards(src)
 		ai_movement.start_moving_towards(src, bucket, 1)
@@ -247,16 +255,20 @@
 			stoplag(2)
 		ai_movement.stop_moving_towards(src)
 		if(QDELETED(bucket) || get_dist(living_pawn, bucket) > 1)
+			living_pawn.balloon_alert(living_pawn, "can't reach the water!")
 			return
 		ai_interact(bucket, FALSE, list(RIGHT_CLICK = TRUE))
 		stoplag(2)
 		if(mop.reagents.total_volume < 0.1)
+			living_pawn.balloon_alert(living_pawn, "couldn't wet the mop!")
 			return
 
 	var/cleaned_count = 0
 	while(cleaned_count < 10)
 		var/obj/effect/decal/cleanable/mess = find_nearest_moppable_mess(search_range)
 		if(!mess)
+			if(!cleaned_count)
+				living_pawn.balloon_alert(living_pawn, "nothing to clean nearby!")
 			break
 
 		var/turf/mess_turf = get_turf(mess)
@@ -269,17 +281,22 @@
 		if(QDELETED(mess))
 			continue
 		if(get_dist(living_pawn, mess_turf) > 1)
+			living_pawn.balloon_alert(living_pawn, "can't reach the mess!")
 			break
 
+		// Clicking the turf with the active mop triggers the mop's real cleaner
+		// component, including do_after, reagent use, washing, and skill effects.
 		ai_interact(mess_turf, FALSE)
 		var/clean_timeout = world.time + 5 SECONDS
 		while(!QDELETED(mess) && world.time < clean_timeout)
 			stoplag(2)
 		if(!QDELETED(mess))
+			living_pawn.balloon_alert(living_pawn, "couldn't clean that!")
 			break
 
 		cleaned_count++
 		if(mop.reagents.total_volume < 0.1)
+			living_pawn.balloon_alert(living_pawn, "mop ran dry!")
 			break
 
 /datum/ai_controller/crew_npc/proc/drop_active_item()
