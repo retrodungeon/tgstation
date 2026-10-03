@@ -133,6 +133,31 @@
 	// ai_interact ultimately uses the human pawn's normal ClickOn path.
 	ai_interact(target, FALSE)
 
+/datum/ai_controller/crew_npc/proc/find_nearest_loose_item(item_type, search_range = 7)
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return null
+
+	var/obj/item/best_target
+	var/best_distance = INFINITY
+	for(var/obj/item/candidate in oview(search_range, living_pawn))
+		if(!istype(candidate, item_type) || !isturf(candidate.loc))
+			continue
+		var/distance = get_dist(living_pawn, candidate)
+		if(distance < best_distance)
+			best_target = candidate
+			best_distance = distance
+
+	return best_target
+
+/datum/ai_controller/crew_npc/proc/find_and_pick_up(item_type, search_range = 7)
+	var/obj/item/target = find_nearest_loose_item(item_type, search_range)
+	if(!target)
+		return null
+	if(!pick_up_target(target))
+		return null
+	return target
+
 /datum/ai_controller/crew_npc/proc/drop_active_item()
 	var/mob/living/living_pawn = pawn
 	if(!istype(living_pawn))
@@ -265,3 +290,26 @@ ADMIN_VERB(barry_drop_item, R_ADMIN, "Barry Drop Held Item", "Order the Autonomo
 		return
 
 	to_chat(user, span_notice("[barry] drops their active held item."))
+
+
+ADMIN_VERB(barry_find_mop, R_ADMIN, "Barry Find Mop", "Order the Autonomous Crew janitor prototype to find and retrieve a nearby loose mop.", ADMIN_CATEGORY_DEBUG)
+	var/mob/living/carbon/human/crew_npc/janitor/barry
+	for(var/mob/living/carbon/human/crew_npc/janitor/candidate in GLOB.mob_list)
+		barry = candidate
+		break
+
+	if(!barry)
+		to_chat(user, span_warning("No Autonomous Crew janitor prototype currently exists."))
+		return
+
+	var/datum/ai_controller/crew_npc/controller = barry.ai_controller
+	if(!controller)
+		to_chat(user, span_warning("[barry] does not have an Autonomous Crew AI controller."))
+		return
+
+	var/obj/item/mop/target = controller.find_and_pick_up(/obj/item/mop, 7)
+	if(!target)
+		to_chat(user, span_warning("[barry] could not find a loose mop within seven tiles."))
+		return
+
+	to_chat(user, span_notice("[barry] found [target] and is going to retrieve it."))
