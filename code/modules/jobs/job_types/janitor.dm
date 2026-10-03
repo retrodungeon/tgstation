@@ -211,17 +211,27 @@
 	INVOKE_ASYNC(src, PROC_REF(run_janitor_work), search_range)
 	return TRUE
 
+/datum/ai_controller/crew_npc/proc/janitor_debug(message)
+	var/mob/living/living_pawn = pawn
+	var/where = living_pawn ? AREACOORD(living_pawn) : "no pawn"
+	log_game("[CREW NPC] [living_pawn || "UNKNOWN"]: [message] @ [where]")
+
 /datum/ai_controller/crew_npc/proc/run_janitor_work(search_range)
 	var/mob/living/living_pawn = pawn
 	if(!istype(living_pawn))
+		janitor_debug("ABORT: pawn is not a living mob")
 		return
 
+	janitor_debug("START clean task; range=[search_range]")
 	cancel_current_plan()
 	ai_movement.stop_moving_towards(src)
 
 	var/obj/item/mop/mop = get_held_mop()
+	janitor_debug("held mop=[mop || "none"]")
 	if(!mop)
+		janitor_debug("searching for loose mop")
 		mop = find_nearest_loose_item(/obj/item/mop, search_range)
+		janitor_debug("mop search result=[mop || "none"]")
 		if(!mop)
 			living_pawn.balloon_alert(living_pawn, "can't find a mop!")
 			return
@@ -239,12 +249,15 @@
 		var/mop_hand = living_pawn.get_held_index_of_item(mop)
 		if(mop_hand)
 			living_pawn.swap_hand(mop_hand)
+	janitor_debug("mop active=[mop == living_pawn.get_active_held_item()]; volume=[mop.reagents?.total_volume]")
 	if(mop != living_pawn.get_active_held_item())
 		living_pawn.balloon_alert(living_pawn, "can't ready the mop!")
 		return
 
 	if(mop.reagents.total_volume < 0.1)
+		janitor_debug("mop dry; searching for bucket")
 		var/obj/structure/mop_bucket/bucket = find_nearest_mop_bucket(search_range)
+		janitor_debug("bucket search result=[bucket || "none"]; volume=[bucket?.reagents?.total_volume]")
 		if(!bucket)
 			living_pawn.balloon_alert(living_pawn, "mop is dry; no water nearby!")
 			return
@@ -257,15 +270,19 @@
 		if(QDELETED(bucket) || get_dist(living_pawn, bucket) > 1)
 			living_pawn.balloon_alert(living_pawn, "can't reach the water!")
 			return
+		janitor_debug("at bucket; attempting right-click interaction")
 		ai_interact(bucket, FALSE, list(RIGHT_CLICK = TRUE))
 		stoplag(2)
+		janitor_debug("after bucket interaction; mop volume=[mop.reagents.total_volume]")
 		if(mop.reagents.total_volume < 0.1)
 			living_pawn.balloon_alert(living_pawn, "couldn't wet the mop!")
 			return
 
 	var/cleaned_count = 0
 	while(cleaned_count < 10)
+		janitor_debug("searching for moppable mess; cleaned=[cleaned_count]")
 		var/obj/effect/decal/cleanable/mess = find_nearest_moppable_mess(search_range)
+		janitor_debug("mess search result=[mess || "none"]; dist=[mess ? get_dist(living_pawn, mess) : -1]")
 		if(!mess)
 			if(!cleaned_count)
 				living_pawn.balloon_alert(living_pawn, "nothing to clean nearby!")
@@ -286,6 +303,7 @@
 
 		// Clicking the turf with the active mop triggers the mop's real cleaner
 		// component, including do_after, reagent use, washing, and skill effects.
+		janitor_debug("at mess turf; attempting mop interaction")
 		ai_interact(mess_turf, FALSE)
 		var/clean_timeout = world.time + 5 SECONDS
 		while(!QDELETED(mess) && world.time < clean_timeout)
@@ -295,6 +313,7 @@
 			break
 
 		cleaned_count++
+		janitor_debug("clean succeeded; cleaned=[cleaned_count]; mop volume=[mop.reagents.total_volume]")
 		if(mop.reagents.total_volume < 0.1)
 			living_pawn.balloon_alert(living_pawn, "mop ran dry!")
 			break
