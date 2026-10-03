@@ -107,6 +107,13 @@
 		return FALSE
 
 	set_blackboard_key(BB_CREW_NPC_PICKUP_TARGET, target)
+
+	// A previous destination task may still own the movement datum even after
+	// its move loop has finished. Explicitly release it before starting a new
+	// item-retrieval movement target.
+	cancel_current_plan()
+	ai_movement.stop_moving_towards(src)
+
 	INVOKE_ASYNC(src, PROC_REF(run_pickup_test), target)
 	return TRUE
 
@@ -115,7 +122,9 @@
 		return
 
 	// First walk adjacent using the normal station-scale movement datum.
-	ai_movement.start_moving_towards(src, target, 1)
+	var/datum/move_loop/pickup_loop = ai_movement.start_moving_towards(src, target, 1)
+	if(!pickup_loop && get_dist(pawn, target) > 1)
+		return
 
 	var/timeout = world.time + 30 SECONDS
 	while(!QDELETED(target) && !QDELETED(pawn) && get_dist(pawn, target) > 1 && world.time < timeout)
