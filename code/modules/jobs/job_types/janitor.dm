@@ -167,6 +167,121 @@
 		return null
 	return target
 
+/datum/ai_controller/crew_npc/proc/find_nearest_moppable_mess(search_range = 7)
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return null
+
+	var/obj/effect/decal/cleanable/best_mess
+	var/best_distance = INFINITY
+	for(var/obj/effect/decal/cleanable/mess in oview(search_range, living_pawn))
+		if(!mess.is_mopped)
+			continue
+		var/distance = get_dist(living_pawn, mess)
+		if(distance < best_distance)
+			best_mess = mess
+			best_distance = distance
+
+	return best_mess
+
+/datum/ai_controller/crew_npc/proc/find_nearest_mop_bucket(search_range = 7)
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return null
+
+	var/obj/structure/mop_bucket/best_bucket
+	var/best_distance = INFINITY
+	for(var/obj/structure/mop_bucket/bucket in oview(search_range, living_pawn))
+		if(!bucket.reagents?.total_volume)
+			continue
+		var/distance = get_dist(living_pawn, bucket)
+		if(distance < best_distance)
+			best_bucket = bucket
+			best_distance = distance
+
+	return best_bucket
+
+/datum/ai_controller/crew_npc/proc/get_held_mop()
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return null
+	return locate(/obj/item/mop) in living_pawn.held_items
+
+/datum/ai_controller/crew_npc/proc/start_janitor_work(search_range = 7)
+	INVOKE_ASYNC(src, PROC_REF(run_janitor_work), search_range)
+	return TRUE
+
+/datum/ai_controller/crew_npc/proc/run_janitor_work(search_range)
+	var/mob/living/living_pawn = pawn
+	if(!istype(living_pawn))
+		return
+
+	cancel_current_plan()
+	ai_movement.stop_moving_towards(src)
+
+	var/obj/item/mop/mop = get_held_mop()
+	if(!mop)
+		mop = find_nearest_loose_item(/obj/item/mop, search_range)
+		if(!mop)
+			return
+		pick_up_target(mop)
+		var/pickup_timeout = world.time + 30 SECONDS
+		while(!QDELETED(mop) && mop.loc != living_pawn && world.time < pickup_timeout)
+			stoplag(2)
+		if(QDELETED(mop) || mop.loc != living_pawn)
+			return
+
+	if(mop != living_pawn.get_active_held_item())
+		living_pawn.swap_hand(living_pawn.get_inactive_hand_index())
+	if(mop != living_pawn.get_active_held_item())
+		return
+
+	if(mop.reagents.total_volume < 0.1)
+		var/obj/structure/mop_bucket/bucket = find_nearest_mop_bucket(search_range)
+		if(!bucket)
+			return
+		ai_movement.stop_moving_towards(src)
+		ai_movement.start_moving_towards(src, bucket, 1)
+		var/bucket_timeout = world.time + 30 SECONDS
+		while(!QDELETED(bucket) && get_dist(living_pawn, bucket) > 1 && world.time < bucket_timeout)
+			stoplag(2)
+		ai_movement.stop_moving_towards(src)
+		if(QDELETED(bucket) || get_dist(living_pawn, bucket) > 1)
+			return
+		ai_interact(bucket, FALSE, list(RIGHT_CLICK = TRUE))
+		stoplag(2)
+		if(mop.reagents.total_volume < 0.1)
+			return
+
+	var/cleaned_count = 0
+	while(cleaned_count < 10)
+		var/obj/effect/decal/cleanable/mess = find_nearest_moppable_mess(search_range)
+		if(!mess)
+			break
+
+		var/turf/mess_turf = get_turf(mess)
+		ai_movement.stop_moving_towards(src)
+		ai_movement.start_moving_towards(src, mess_turf, 1)
+		var/mess_timeout = world.time + 30 SECONDS
+		while(!QDELETED(mess) && get_dist(living_pawn, mess_turf) > 1 && world.time < mess_timeout)
+			stoplag(2)
+		ai_movement.stop_moving_towards(src)
+		if(QDELETED(mess))
+			continue
+		if(get_dist(living_pawn, mess_turf) > 1)
+			break
+
+		ai_interact(mess_turf, FALSE)
+		var/clean_timeout = world.time + 5 SECONDS
+		while(!QDELETED(mess) && world.time < clean_timeout)
+			stoplag(2)
+		if(!QDELETED(mess))
+			break
+
+		cleaned_count++
+		if(mop.reagents.total_volume < 0.1)
+			break
+
 /datum/ai_controller/crew_npc/proc/drop_active_item()
 	var/mob/living/living_pawn = pawn
 	if(!istype(living_pawn))
@@ -322,3 +437,22 @@ ADMIN_VERB(barry_find_mop, R_ADMIN, "Barry Find Mop", "Order the Autonomous Crew
 		return
 
 	to_chat(user, span_notice("[barry] found [target] and is going to retrieve it."))
+
+
+ADMIN_VERB(barry_clean_nearby, R_ADMIN, "Barry Clean Nearby", "Order the Autonomous Crew janitor prototype to acquire a mop, wet it if needed, and clean nearby moppable messes.", ADMIN_CATEGORY_DEBUG)
+	var/mob/living/carbon/human/crew_npc/janitor/barry
+	for(var/mob/living/carbon/human/crew_npc/janitor/candidate in GLOB.mob_list)
+		barry = candidate
+		break
+
+	if(!barry)
+		to_chat(user, span_warning("No Autonomous Crew janitor prototype currently exists."))
+		return
+
+	var/datum/ai_controller/crew_npc/controller = barry.ai_controller
+	if(!controller)
+		to_chat(user, span_warning("[barry] does not have an Autonomous Crew AI controller."))
+		return
+
+	controller.start_janitor_work(7)
+	to_chat(user, span_notice("Ordering [barry] to begin janitorial work nearby."))
